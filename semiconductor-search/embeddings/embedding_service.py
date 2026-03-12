@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import random
 import time
+import ast
 from typing import List, Optional
 
 import requests
@@ -50,27 +51,59 @@ def _call_embedding_api(inputs: List[str]) -> Optional[List[List[float]]]:
         List of embedding vectors in the same order as `inputs`,
         or None if an error occurs.
     """
-    if not API_KEY or not CLIENT_APP_NAME:
+    def _normalize_config_string(value: object) -> str:
+        """Normalize possibly malformed env/config values into a plain string."""
+        if isinstance(value, str):
+            text = value.strip()
+
+            # Handle tuple/list string forms such as "('chat',)" or "['embeddings']"
+            if (text.startswith("(") and text.endswith(")")) or (
+                text.startswith("[") and text.endswith("]")
+            ):
+                try:
+                    parsed = ast.literal_eval(text)
+                    if isinstance(parsed, (list, tuple)) and parsed:
+                        return str(parsed[0]).strip()
+                except (ValueError, SyntaxError):
+                    pass
+
+            return text
+
+        if isinstance(value, (list, tuple)) and value:
+            return str(value[0]).strip()
+
+        if value is None:
+            return ""
+
+        return str(value).strip()
+
+    def _looks_like_embedding_service(service_name: str) -> bool:
+        lowered = service_name.lower()
+        return "embed" in lowered
+
+    api_key = _normalize_config_string(API_KEY)
+    client_app_name = _normalize_config_string(CLIENT_APP_NAME)
+
+    if not api_key or not client_app_name:
         # No credentials configured: behave gracefully
         return None
 
-    service_name = EMBEDDING_SERVICE_NAME  # e.g. "embeddings"
-    url = EMBEDDING_URL                    # e.g. "https://.../embeddings/api/client-apps"
+    url = EMBEDDING_URL  # e.g. "https://.../embeddings/api/client-apps"
 
-    token, timestamp, nonce = _generate_token(API_KEY, CLIENT_APP_NAME, service_name)
+    def _post_with_service(service_name: str) -> dict:
+        token, timestamp, nonce = _generate_token(api_key, client_app_name, service_name)
 
-    # Request body format – this MUST match what your embedding service expects.
-    # Example payload; adjust if your backend uses a different schema.
-    request_body = {
-        "version": 1,
-        "clientAppName": CLIENT_APP_NAME,
-        "service": service_name,
-        "timestamp": timestamp,
-        "model": EMBEDDING_MODEL,
-        "inputs": inputs,  # list of strings
-    }
+        # Request body format – this MUST match what your embedding service expects.
+        # Example payload; adjust if your backend uses a different schema.
+        request_body = {
+            "version": 1,
+            "clientAppName": client_app_name,
+            "service": service_name,
+            "timestamp": timestamp,
+            "model": EMBEDDING_MODEL,
+            "inputs": inputs,  # list of strings
+        }
 
-    try:
         response = requests.post(
             url,
             json=request_body,
@@ -83,7 +116,39 @@ def _call_embedding_api(inputs: List[str]) -> Optional[List[List[float]]]:
             timeout=30,
         )
         response.raise_for_status()
-        payload = response.json()
+        return response.json()
+
+    try:
+        service_name = _normalize_config_string(EMBEDDING_SERVICE_NAME)  # e.g. "embeddings"
+        payload = _post_with_service(service_name)
+
+        if payload.get("errorCode"):
+            suggested_services = payload.get("service")
+            if (
+                payload.get("message") == "Invalid service type"
+                and isinstance(suggested_services, list)
+                and suggested_services
+            ):
+                fallback_service = _normalize_config_string(suggested_services[0])
+                if (
+                    fallback_service != service_name
+                    and _looks_like_embedding_service(fallback_service)
+                ):
+                    print(
+                        "[Embedding] Invalid service type for "
+                        f"'{service_name}'. Retrying with '{fallback_service}'."
+                    )
+                    payload = _post_with_service(fallback_service)
+                else:
+                    print(
+                        "[Embedding] Invalid service type and no embedding-compatible "
+                        f"fallback provided. configured='{service_name}', "
+                        f"suggested={suggested_services}"
+                    )
+
+            if payload.get("errorCode"):
+                print(f"[Embedding] API error: {payload}")
+                return None
 
         # Expected response shape example:
         # {

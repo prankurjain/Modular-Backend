@@ -10,6 +10,7 @@ Endpoints:
 """
 
 import os
+from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -75,12 +76,18 @@ def ingest_data(csv_path: str = Query(default=CSV_PATH)):
     for entry in entries:
         name = entry["product_name"]
         category = entry["category"]
-        html_path = entry["html_path"]
+        html_path = entry.get("html_path", "")
+        source_url = entry.get("source_url", "")
+        html_source = html_path or source_url
 
         try:
-            html = load_html(html_path)
+            html = load_html(html_source, csv_dir=str(Path(csv_path).resolve().parent))
         except FileNotFoundError:
-            errors.append(f"{name}: HTML file not found at {html_path}")
+            errors.append(f"{name}: HTML file not found at {html_source}")
+            skipped += 1
+            continue
+        except Exception as e:
+            errors.append(f"{name}: failed to load source {html_source} — {e}")
             skipped += 1
             continue
 

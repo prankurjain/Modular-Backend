@@ -1,2 +1,3 @@
-product_name,category,html_path
-TIP120,C:/Users/jainpran/Downloads/TIP120 STMicroelectronics _ Mouser.html,C:/Users/jainpran/Downloads/60 V 5 A Darlington Transistors – Mouser India.html
+product_name,category,html_path,url
+TIP120,transistor,C:/Users/jainpran/Downloads/TIP120 STMicroelectronics _ Mouser.html,https://www.mouser.in/ProductDetail/STMicroelectronics/TIP120?qs=ljbEvF4DwOPl3O93r6IAPg%3D%3D
+Darlington 60V 5A Filter,transistor,C:/Users/jainpran/Downloads/60 V 5 A Darlington Transistors – Mouser India.html,https://www.mouser.in/c/semiconductors/discrete-semiconductors/transistors/darlington-transistors/?collector-%20base%20voltage%20vcbo=60%20V&maximum%20dc%20collector%20current=5%20A&instock=y

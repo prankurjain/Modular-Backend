@@ -192,6 +192,31 @@ def update_product_embedding(product_name: str, embedding: list):
         conn.close()
 
 
+
+
+def _to_json_safe_value(value):
+    """Convert Oracle driver values (including LOBs) into JSON-serializable Python values."""
+    if value is None:
+        return None
+
+    # python-oracledb LOB objects expose .read()
+    if hasattr(value, "read") and callable(value.read):
+        try:
+            return value.read()
+        except Exception:
+            return None
+
+    return value
+
+
+def _normalize_row(columns: list[str], row: tuple) -> dict:
+    """Build a dict row and normalize Oracle-specific value types."""
+    return {
+        col: _to_json_safe_value(val)
+        for col, val in zip(columns, row)
+    }
+
+
 def get_product_by_name(product_name: str) -> dict | None:
     """Fetch a single product row by exact product name."""
     conn = get_connection()
@@ -205,7 +230,7 @@ def get_product_by_name(product_name: str) -> dict | None:
             row = cur.fetchone()
             if not row:
                 return None
-            product = dict(zip(columns, row))
+            product = _normalize_row(columns, row)
             # Parse embedding CLOB back to list if present
             if product.get("embedding_vector"):
                 try:
@@ -226,7 +251,7 @@ def get_products_without_embeddings() -> list[dict]:
                 "SELECT product_name, features_text FROM products WHERE embedding_vector IS NULL"
             )
             columns = [col[0].lower() for col in cur.description]
-            return [dict(zip(columns, row)) for row in cur.fetchall()]
+            return [_normalize_row(columns, row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -250,7 +275,7 @@ def get_all_products() -> list[dict]:
                 ORDER BY id
             """)
             columns = [col[0].lower() for col in cur.description]
-            return [dict(zip(columns, row)) for row in cur.fetchall()]
+            return [_normalize_row(columns, row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -323,7 +348,7 @@ def get_structured_candidates(base_product: dict, top_n: int = 50) -> list[dict]
             columns = [col[0].lower() for col in cur.description]
             results = []
             for row in cur.fetchall():
-                product = dict(zip(columns, row))
+                product = _normalize_row(columns, row)
                 # Parse embedding CLOB back to list if present
                 if product.get("embedding_vector"):
                     try:

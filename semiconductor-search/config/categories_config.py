@@ -1,6 +1,3 @@
-# Category configuration drives what specs are extracted and how they are normalized.
-# Each entry maps HTML label variants to a canonical internal attribute name.
-
 CATEGORIES = {
     "microcontroller": {
         "important_attributes": [
@@ -12,7 +9,6 @@ CATEGORIES = {
             "voltage_max",
             "interfaces",
         ],
-        # Maps raw HTML spec labels to canonical attribute names
         "html_spec_map": {
             "core": "architecture",
             "cpu": "architecture",
@@ -125,6 +121,76 @@ CATEGORIES = {
             "access time": "speed",
             "speed": "speed",
             "package": "package_type",
+        },
+    },
+
+    # NEW: Transistor category
+    "transistor": {
+        "important_attributes": [
+            "transistor_type",        # BJT / MOSFET / IGBT etc.
+            "polarity",               # NPN / PNP / N-channel / P-channel
+            "vce_max_v",              # or vds_max_v, generic "max_voltage_v"
+            "ic_max_a",               # or id_max_a, generic "max_current_a"
+            "power_dissipation_w",
+            "gain_hfe",               # or transconductance for MOSFET if desired
+            "rds_on_ohm",             # mostly for MOSFETs
+            "package_type",
+        ],
+        "html_spec_map": {
+            # Type / Structure
+            "transistor type": "transistor_type",
+            "type": "transistor_type",
+            "device type": "transistor_type",
+            "technology": "transistor_type",
+            "structure": "transistor_type",
+            "configuration": "transistor_type",
+
+            # Polarity
+            "polarity": "polarity",
+            "channel type": "polarity",
+            "channel": "polarity",
+
+            # Voltage ratings
+            "collector emitter voltage": "vce_max_v",
+            "collector-emitter voltage": "vce_max_v",
+            "vceo": "vce_max_v",
+            "vces": "vce_max_v",
+            "drain source voltage": "vds_max_v",
+            "drain-source voltage": "vds_max_v",
+            "vds": "vds_max_v",
+            "maximum voltage": "max_voltage_v",
+
+            # Current ratings
+            "collector current": "ic_max_a",
+            "ic": "ic_max_a",
+            "drain current": "id_max_a",
+            "id": "id_max_a",
+            "maximum current": "max_current_a",
+
+            # Power
+            "power dissipation": "power_dissipation_w",
+            "total power dissipation": "power_dissipation_w",
+            "pd": "power_dissipation_w",
+
+            # Gain / transconductance
+            "dc current gain": "gain_hfe",
+            "hfe": "gain_hfe",
+            "gain": "gain_hfe",
+            "transconductance": "transconductance",
+
+            # On-resistance (MOSFET)
+            "on resistance": "rds_on_ohm",
+            "on-resistance": "rds_on_ohm",
+            "rds(on)": "rds_on_ohm",
+            "rds on": "rds_on_ohm",
+
+            # Package & temperature
+            "package": "package_type",
+            "case": "package_type",
+            "package type": "package_type",
+            "operating temperature": "temp_range",
+            "junction temperature": "temp_range",
+            "storage temperature": "temp_range",
         },
     },
 }

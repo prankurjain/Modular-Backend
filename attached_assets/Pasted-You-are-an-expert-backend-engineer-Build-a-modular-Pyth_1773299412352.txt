@@ -1,0 +1,259 @@
+You are an expert backend engineer. Build a modular Python backend system for a semiconductor product alternative search engine.
+ 
+The system will ingest locally stored HTML product pages, extract specifications, store them in Oracle database, generate embeddings using OpenAI, and find alternative semiconductor products using a hybrid search architecture.
+ 
+Important Constraints
+ 
+1. No external scraping is allowed.
+2. HTML files are already stored locally.
+3. A CSV file contains product name, category, and HTML file path.
+4. Oracle Database must be used.
+5. OpenAI API will be used only for embeddings and reasoning.
+6. The system must support multiple semiconductor categories (microcontroller, sensor, power IC, etc.).
+7. The system must use a configuration-driven approach for category-specific attributes.
+ 
+---
+ 
+System Architecture
+ 
+Data Ingestion Pipeline
+ 
+CSV → HTML Loader → HTML Parser → Spec Normalizer → Oracle DB → Embedding Generator
+ 
+Search Pipeline
+ 
+User Query → Structured Filter → Vector Similarity → Result Ranking
+ 
+---
+ 
+Category Configuration System
+ 
+Create a configuration file that defines:
+ 
+1. supported categories
+2. important attributes per category
+3. attribute normalization rules
+ 
+Example file:
+ 
+config/categories_config.py
+ 
+Example structure:
+ 
+CATEGORIES = {
+"microcontroller": {
+"important_attributes": [
+"architecture",
+"flash_kb",
+"ram_kb",
+"gpio_pins",
+"voltage_min",
+"voltage_max",
+"interfaces"
+],
+"html_spec_map": {
+"Core": "architecture",
+"Flash": "flash_kb",
+"Program Memory": "flash_kb",
+"RAM": "ram_kb",
+"SRAM": "ram_kb",
+"GPIO": "gpio_pins",
+"Voltage": "voltage_range"
+}
+},
+ 
+```
+"sensor": {
+    "important_attributes": [
+        "sensor_type",
+        "measurement_range",
+        "accuracy",
+        "interface",
+        "voltage_min",
+        "voltage_max"
+    ]
+}
+```
+ 
+}
+ 
+The HTML parser must read this configuration and only extract attributes defined for that category.
+ 
+---
+ 
+CSV File Structure
+ 
+data/products.csv
+ 
+product_name,category,html_path
+STM32F103C8,microcontroller,data/html/stm32f103c8.html
+STM32F407VG,microcontroller,data/html/stm32f407vg.html
+ 
+---
+ 
+HTML Parsing
+ 
+Use BeautifulSoup.
+ 
+Steps:
+ 
+1. Load HTML file
+2. Find specification tables
+3. Extract key/value pairs
+4. Use the category configuration mapping to normalize spec names
+5. Convert values into numeric format where possible
+ 
+Example output:
+ 
+{
+"product_name": "STM32F103C8",
+"category": "microcontroller",
+"architecture": "ARM Cortex-M3",
+"flash_kb": 64,
+"ram_kb": 20,
+"gpio_pins": 48,
+"voltage_min": 2.0,
+"voltage_max": 3.6,
+"interfaces": ["SPI","I2C","UART"]
+}
+ 
+---
+ 
+Database Design (Oracle)
+ 
+Create a PRODUCTS table.
+ 
+Fields:
+ 
+id
+product_name
+category
+architecture
+flash_kb
+ram_kb
+gpio_pins
+voltage_min
+voltage_max
+features_text
+embedding_vector
+ 
+features_text will be a natural language representation of product specs used to generate embeddings.
+ 
+---
+ 
+Embedding Generation
+ 
+Use OpenAI embeddings API.
+ 
+Example feature text:
+ 
+"ARM Cortex-M3 microcontroller with 64KB flash, 20KB RAM, 48 pins, SPI I2C UART interfaces, operating voltage 2.0 to 3.6 volts."
+ 
+Store the embedding vector in Oracle.
+ 
+---
+ 
+Hybrid Search Algorithm
+ 
+When user searches for alternatives:
+ 
+Step 1
+Find base product in database.
+ 
+Step 2
+Apply structured filtering using SQL.
+ 
+Example rules:
+ 
+same category
+flash >= base flash
+ram >= base ram
+pins >= base pins
+same architecture (when applicable)
+ 
+Step 3
+Perform vector similarity search using embedding column.
+ 
+Step 4
+Return top N most similar products.
+ 
+---
+ 
+FastAPI Endpoints
+ 
+/ingest-data
+Reads CSV, parses HTML, stores normalized specs in Oracle.
+ 
+/generate-embeddings
+Creates embeddings for stored products using OpenAI.
+ 
+/find-alternatives
+Input: product name
+Output: ranked list of alternative semiconductor products.
+ 
+---
+ 
+Project Structure
+ 
+project/
+ 
+config/
+settings.py
+categories_config.py
+ 
+database/
+oracle_client.py
+schema.sql
+ 
+ingestion/
+csv_loader.py
+html_loader.py
+html_parser.py
+spec_normalizer.py
+ 
+embeddings/
+embedding_service.py
+ 
+search/
+structured_filter.py
+vector_search.py
+hybrid_search.py
+ 
+api/
+routes.py
+ 
+utils/
+value_parser.py
+feature_builder.py
+ 
+main.py
+ 
+data/
+products.csv
+html/
+ 
+---
+ 
+Coding Requirements
+ 
+1. Code must be modular and maintainable.
+2. Each module should have a single responsibility.
+3. Add clear comments explaining logic.
+4. Use environment variables for API keys and DB credentials.
+5. Handle missing specs gracefully.
+6. Make system scalable for thousands of products.
+ 
+---
+ 
+Expected Result
+ 
+The system should be able to:
+ 
+1. Read product HTML pages from CSV
+2. Extract semiconductor specifications
+3. Normalize data based on category configuration
+4. Store structured data in Oracle
+5. Generate embeddings
+6. Find alternative semiconductor products using hybrid search.
+ 
+Write full working Python code for this architecture.

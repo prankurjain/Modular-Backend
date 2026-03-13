@@ -2,6 +2,7 @@
 Loads raw HTML content from a local file path or URL.
 """
 
+import ssl
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -34,6 +35,7 @@ def _normalize_windows_path(raw_path: str, csv_dir: Path) -> Path:
         csv_dir / "html" / filename,
         csv_dir.parent / "html" / filename,
     ]
+
     for path in fallbacks:
         if path.exists():
             return path
@@ -53,18 +55,33 @@ def load_html(html_source: str, csv_dir: str | None = None) -> str:
         FileNotFoundError: If local file does not exist.
         ValueError: If source is empty.
     """
+
     source = (html_source or "").strip()
+
     if not source:
         raise ValueError("html_source cannot be empty")
 
+    # ------------------------------
+    # Load HTML from URL
+    # ------------------------------
     if _looks_like_url(source):
+
         req = Request(source, headers={"User-Agent": DEFAULT_USER_AGENT})
-        with urlopen(req, timeout=30) as response:  # nosec B310 - controlled use for ingestion
+
+        # Disable SSL verification (fix for corporate / hackathon environments)
+        context = ssl._create_unverified_context()
+
+        with urlopen(req, timeout=30, context=context) as response:
             return response.read().decode("utf-8", errors="replace")
+
+    # ------------------------------
+    # Load HTML from local file
+    # ------------------------------
 
     base_dir = Path(csv_dir).resolve() if csv_dir else Path.cwd()
 
     path = Path(source)
+
     if not path.is_absolute():
         path = (base_dir / path).resolve()
     else:

@@ -31,9 +31,11 @@ def load_product_csv(csv_path: str) -> list[dict]:
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
     products = []
-    with open(csv_path, newline="", encoding="utf-8") as f:
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(reader, start=1):
+            print(row)
+            print(row.keys())
             name = row.get("product_name", "").strip()
             category = row.get("category", "").strip().lower() or "transistor"
             html_path = (

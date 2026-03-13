@@ -24,6 +24,7 @@ from embeddings.embedding_service import get_embeddings_batch
 from search.hybrid_search import find_alternatives
 from vector_db.service import upsert_product_vector
 from config.settings import OPENAI_API_KEY
+from embeddings.embedding_service import get_embedding
 
 router = APIRouter()
 CSV_PATH = os.environ.get("PRODUCTS_CSV_PATH", "data/products.csv")
@@ -113,6 +114,35 @@ def ingest_demo_data(path: str = Query(default=DEMO_JSON_PATH)):
     return IngestResponse(ingested=ingested, skipped=skipped, errors=errors)
 
 
+# @router.post("/generate-embeddings", response_model=EmbeddingResponse)
+# def generate_embeddings():
+#     if not OPENAI_API_KEY:
+#         raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured.")
+
+#     pending = get_products_without_embeddings()
+#     if not pending:
+#         return EmbeddingResponse(generated=0, skipped=0, message="All products already have embeddings.")
+
+#     texts = [p["features_text"] or p["product_name"] for p in pending]
+#     embeddings = get_embeddings_batch(texts)
+
+#     generated = 0
+#     skipped = 0
+#     for product, embedding in zip(pending, embeddings):
+#         if embedding is None:
+#             skipped += 1
+#             continue
+#         try:
+#             update_product_embedding(product["product_name"], embedding)
+#             persisted = get_product_by_name(product["product_name"])
+#             if persisted:
+#                 upsert_product_vector(persisted)
+#             generated += 1
+#         except Exception:
+#             skipped += 1
+
+#     return EmbeddingResponse(generated=generated, skipped=skipped, message=f"Generated embeddings for {generated} products.")
+
 @router.post("/generate-embeddings", response_model=EmbeddingResponse)
 def generate_embeddings():
     if not OPENAI_API_KEY:
@@ -120,27 +150,67 @@ def generate_embeddings():
 
     pending = get_products_without_embeddings()
     if not pending:
-        return EmbeddingResponse(generated=0, skipped=0, message="All products already have embeddings.")
+        return EmbeddingResponse(
+            generated=0,
+            skipped=0,
+            message="All products already have embeddings."
+        )
 
-    texts = [p["features_text"] or p["product_name"] for p in pending]
-    embeddings = get_embeddings_batch(texts)
+    # If you want to keep the same logging style as your ingestion code:
+    if not pending:
+        print("[INGEST] No products provided for embedding")
+        return EmbeddingResponse(
+            generated=0,
+            skipped=0,
+            message="No products provided for embedding."
+        )
 
     generated = 0
     skipped = 0
-    for product, embedding in zip(pending, embeddings):
-        if embedding is None:
-            skipped += 1
-            continue
+
+    for product in pending:
+        name = product.get("product_name", "<unknown>")
+        print(f"[INGEST] Processing: {name}")
+
         try:
-            update_product_embedding(product["product_name"], embedding)
-            persisted = get_product_by_name(product["product_name"])
+            # Prefer features_text; fall back to product_name if needed
+            text = product.get("features_text") or product.get("product_name")
+
+            if not text:
+                print(f"[INGEST] Skipping {name}: no text available for embedding")
+                skipped += 1
+                continue
+
+            # Generate embedding (single-item, not batch)
+            embedding = get_embedding(text)
+
+            if not embedding:
+                print(f"[INGEST] Skipping {name}: embedding is None/empty")
+                skipped += 1
+                continue
+
+            # Update main product table
+            update_product_embedding(name, embedding)
+
+            # Reload/persist vector representation if needed
+            persisted = get_product_by_name(name)
             if persisted:
                 upsert_product_vector(persisted)
-            generated += 1
-        except Exception:
-            skipped += 1
 
-    return EmbeddingResponse(generated=generated, skipped=skipped, message=f"Generated embeddings for {generated} products.")
+            generated += 1
+            print(f"[INGEST] Completed: {name}")
+
+        except Exception as e:
+            skipped += 1
+            print(f"[ERROR] {name}: {e}")
+
+    print("[INGEST] Pipeline completed successfully")
+
+    return EmbeddingResponse(
+        generated=generated,
+        skipped=skipped,
+        message=f"Generated embeddings for {generated} products (skipped {skipped})."
+    )
 
 
 @router.post("/sync-vector-db")

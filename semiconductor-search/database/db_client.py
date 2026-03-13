@@ -119,6 +119,8 @@ def upsert_product(product: dict) -> int:
     try:
         merged = {**_default_product_fields(), **product}
         lookup_key = merged.get("part_number") or merged["product_name"]
+        print("merged:", merged)
+        print("lookup_key:", lookup_key)
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -126,8 +128,6 @@ def upsert_product(product: dict) -> int:
                 USING (SELECT :lookup_key AS lookup_key FROM dual) src
                 ON (NVL(tgt.part_number, tgt.product_name) = src.lookup_key)
                 WHEN MATCHED THEN UPDATE SET
-                    product_name             = :product_name,
-                    part_number              = :part_number,
                     category                 = :category,
                     manufacturer             = :manufacturer,
                     datasheet_url            = :datasheet_url,
@@ -197,8 +197,11 @@ def upsert_product(product: dict) -> int:
             row = cur.fetchone()
         conn.commit()
         return row[0] if row else None
-    except Exception:
+    except Exception as e:
         conn.rollback()
+        import traceback
+        print("upsert_product ERROR:", repr(e))
+        traceback.print_exc()
         raise
     finally:
         conn.close()

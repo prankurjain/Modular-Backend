@@ -13,6 +13,7 @@ from database.db_client import (
 from embeddings.embedding_service import get_embedding
 
 
+
 def run_ingestion(csv_path: str):
 
     print(f"[INGEST] Loading CSV: {csv_path}")

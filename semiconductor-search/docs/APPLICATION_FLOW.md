@@ -91,3 +91,17 @@ This service ingests semiconductor product data, stores normalized specs in **Or
 - Oracle remains source of truth for structured specs.
 - Vector DB is source for nearest-neighbor similarity.
 - Comparison engine always applies final engineering constraints and weighted ranking before response.
+
+
+## 9) Streamlit Frontend
+- File: `frontend/app.py`
+- Run:
+  ```bash
+  streamlit run frontend/app.py
+  ```
+- Features:
+  - Ingest via `/ingest-data` with user-provided CSV path
+  - Ingest demo via `/ingest-demo-data`
+  - Search via `/find-alternative` with pros/cons visualization
+  - View all ingested products from `/products`
+- Configure backend URL from the sidebar (`API Base URL`).

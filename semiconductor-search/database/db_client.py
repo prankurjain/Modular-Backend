@@ -276,7 +276,10 @@ def get_products_without_embeddings() -> list[dict]:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT product_name, features_text FROM products WHERE embedding_vector IS NULL")
+            cur.execute(
+                "SELECT product_name, part_number, features_text "
+                "FROM products WHERE embedding_vector IS NULL"
+            )
             columns = [c[0].lower() for c in cur.description]
             return [_normalize_row(columns, r) for r in cur.fetchall()]
     finally:

@@ -28,13 +28,24 @@ def _resolve_canonical(label: str, spec_map: dict[str, str]) -> str | None:
     return None
 
 
-def parse_product_specs(html: str, category: str) -> dict:
-    """Parse an HTML page and extract specs for the given category."""
-    category = category.lower().strip()
-    cat_config = CATEGORIES.get(category, {})
-    spec_map: dict[str, str] = {
-        _normalize_label(k): v for k, v in cat_config.get("html_spec_map", {}).items()
-    }
+def _build_spec_map(category: str | None) -> dict[str, str]:
+    if category and category.lower().strip() in CATEGORIES:
+        cat_config = CATEGORIES[category.lower().strip()]
+        return {_normalize_label(k): v for k, v in cat_config.get("html_spec_map", {}).items()}
+
+    merged: dict[str, str] = {}
+    for cat_cfg in CATEGORIES.values():
+        for label, canonical in cat_cfg.get("html_spec_map", {}).items():
+            merged[_normalize_label(label)] = canonical
+    return merged
+
+
+def parse_product_specs(html: str, category: str | None) -> dict:
+    """Parse an HTML page and extract canonical specs.
+
+    If category is unknown, use a merged map across all supported categories.
+    """
+    spec_map = _build_spec_map(category)
 
     soup = BeautifulSoup(html, "html.parser")
     raw_specs: dict[str, str] = {}

@@ -109,4 +109,37 @@ def build_features_text(product: dict) -> str:
     if interface:
         parts.append(f"interface {interface}")
 
+    # --- Transistor fields ---
+    transistor_type = product.get("transistor_type")
+    if transistor_type:
+        parts.append(f"transistor type {transistor_type}")
+
+    polarity = product.get("polarity")
+    if polarity:
+        parts.append(f"polarity {polarity}")
+
+    vce_max_v = product.get("vce_max_v")
+    if vce_max_v is not None:
+        parts.append(f"Vce max {vce_max_v}V")
+
+    vds_max_v = product.get("vds_max_v")
+    if vds_max_v is not None:
+        parts.append(f"Vds max {vds_max_v}V")
+
+    ic_max_a = product.get("ic_max_a")
+    if ic_max_a is not None:
+        parts.append(f"Ic max {ic_max_a}A")
+
+    id_max_a = product.get("id_max_a")
+    if id_max_a is not None:
+        parts.append(f"Id max {id_max_a}A")
+
+    rds_on_ohm = product.get("rds_on_ohm")
+    if rds_on_ohm is not None:
+        parts.append(f"Rds on {rds_on_ohm} ohm")
+
+    gate_charge_nc = product.get("gate_charge_nc")
+    if gate_charge_nc is not None:
+        parts.append(f"gate charge {gate_charge_nc} nC")
+
     return ", ".join(parts) + "."

@@ -1,0 +1,50 @@
+[
+  {
+    "product_name": "IRFB3207",
+    "part_number": "IRFB3207",
+    "category": "transistor",
+    "manufacturer": "Infineon",
+    "datasheet_url": "https://example.com/datasheets/IRFB3207.pdf",
+    "vds_max_v": 75,
+    "id_max_a": 120,
+    "rds_on_ohm": 0.008,
+    "gate_charge_nc": 67,
+    "package_type": "TO-220"
+  },
+  {
+    "product_name": "STP75NF75",
+    "part_number": "STP75NF75",
+    "category": "transistor",
+    "manufacturer": "STMicroelectronics",
+    "datasheet_url": "https://example.com/datasheets/STP75NF75.pdf",
+    "vds_max_v": 75,
+    "id_max_a": 80,
+    "rds_on_ohm": 0.009,
+    "gate_charge_nc": 70,
+    "package_type": "TO-220"
+  },
+  {
+    "product_name": "STF80NF55",
+    "part_number": "STF80NF55",
+    "category": "transistor",
+    "manufacturer": "STMicroelectronics",
+    "datasheet_url": "https://example.com/datasheets/STF80NF55.pdf",
+    "vds_max_v": 55,
+    "id_max_a": 80,
+    "rds_on_ohm": 0.007,
+    "gate_charge_nc": 60,
+    "package_type": "TO-220"
+  },
+  {
+    "product_name": "IPP110N20",
+    "part_number": "IPP110N20",
+    "category": "transistor",
+    "manufacturer": "Infineon",
+    "datasheet_url": "https://example.com/datasheets/IPP110N20.pdf",
+    "vds_max_v": 200,
+    "id_max_a": 110,
+    "rds_on_ohm": 0.02,
+    "gate_charge_nc": 95,
+    "package_type": "TO-220"
+  }
+]

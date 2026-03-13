@@ -22,3 +22,10 @@ EMBEDDING_DIMENSION = 1536
 
 # Number of top alternatives to return by default
 TOP_N_RESULTS = 10
+
+
+# Vector DB settings
+VECTOR_DB_PROVIDER = os.environ.get("VECTOR_DB_PROVIDER", "oracle").lower()
+QDRANT_URL = os.environ.get("QDRANT_URL", "")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+QDRANT_COLLECTION_PREFIX = os.environ.get("QDRANT_COLLECTION_PREFIX", "products")

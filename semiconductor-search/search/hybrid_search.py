@@ -1,97 +1,90 @@
-"""
-Hybrid search: combines structured Oracle SQL filtering with Python cosine similarity ranking.
+"""Hybrid search orchestration.
 
-Algorithm:
-  Step 1 — Structured filter: query Oracle for same-category products that meet
-            minimum spec requirements (flash >= base, RAM >= base, etc.).
-  Step 2 — Vector re-rank: if embeddings exist, compute cosine similarity in Python
-            and sort by score.
-  Step 3 — Fallback: if no embeddings, return candidates sorted by a heuristic score.
+Flow:
+1) Fetch base product from Oracle DB.
+2) Pull structured candidates from Oracle DB.
+3) Pull vector neighbors from Vector DB service.
+4) Merge candidates.
+5) Run comparison engine for rule filtering + weighted ranking.
 """
 
-from database.db_client import get_product_by_name
-from search.structured_filter import find_structured_candidates
-from search.vector_search import find_similar_by_vector
 from config.settings import TOP_N_RESULTS
+from database.db_client import get_product_by_part_number
+from search.comparison_engine import apply_rules_and_rank
+from search.structured_filter import find_structured_candidates
+from vector_db.service import search_similar_products
 
 
-def find_alternatives(product_name: str, top_n: int = TOP_N_RESULTS) -> dict:
-    """
-    Find alternative semiconductor products for the given product name.
-
-    Args:
-        product_name: Exact product name as stored in the database.
-        top_n:        Number of alternatives to return.
-
-    Returns:
-        Dict with base_product, alternatives list, and search_mode.
-    """
-    # Step 1: Fetch the base product (includes embedding_vector)
-    base = get_product_by_name(product_name)
+def find_alternatives(part_number: str, top_n: int = TOP_N_RESULTS) -> dict:
+    base = get_product_by_part_number(part_number)
     if not base:
         return {
-            "error": f"Product '{product_name}' not found in database.",
+            "error": (
+                f"Product '{part_number}' not found in database. "
+                "In this demo flow, ingest demo data first before searching."
+            ),
             "base_product": None,
             "alternatives": [],
         }
 
-    # Step 2: Structured filtering
-    candidates = find_structured_candidates(base, top_n=top_n * 5)
+    category = base.get("category")
+    structured_candidates = find_structured_candidates(base, top_n=top_n * 5)
 
-    if not candidates:
+    vector_candidates = []
+    if category:
+        vector_candidates = search_similar_products(
+            base_product=base,
+            category=category,
+            top_n=top_n * 5,
+        )
+
+    merged_candidates = _merge_candidates(structured_candidates, vector_candidates)
+    if not merged_candidates:
         return {
             "base_product": _clean(base),
             "alternatives": [],
-            "search_mode": "structured_only",
-            "message": "No structured candidates found with matching specs.",
+            "search_mode": "none",
+            "message": "No candidates found from Oracle structured search or vector search.",
         }
 
-    # Step 3: Vector re-ranking (Python cosine similarity on Oracle CLOB embeddings)
-    if base.get("embedding_vector") and isinstance(base["embedding_vector"], list):
-        ranked = find_similar_by_vector(base, candidates, top_n=top_n)
-        if ranked:
-            return {
-                "base_product": _clean(base),
-                "alternatives": [_clean(r) for r in ranked],
-                "search_mode": "hybrid",
-                "total_candidates": len(candidates),
-            }
+    ranked = apply_rules_and_rank(base, merged_candidates, top_n=top_n)
 
-    # Fallback: heuristic ranking when embeddings are not yet available
-    ranked = _heuristic_rank(base, candidates, top_n)
     return {
         "base_product": _clean(base),
-        "alternatives": [_clean(r) for r in ranked],
-        "search_mode": "structured_only",
-        "total_candidates": len(candidates),
-        "note": (
-            "Embeddings not generated yet. "
-            "Add OPENAI_API_KEY and call /generate-embeddings for better ranking."
-        ),
+        "alternatives": [_clean(x) for x in ranked],
+        "search_mode": _resolve_search_mode(structured_candidates, vector_candidates),
+        "total_candidates": len(merged_candidates),
+        "sources": {
+            "oracle_structured": len(structured_candidates),
+            "vector_db": len(vector_candidates),
+        },
     }
 
 
-def _heuristic_rank(base: dict, candidates: list[dict], top_n: int) -> list[dict]:
-    """Simple spec-match scoring when embeddings are unavailable."""
-    def score(c: dict) -> float:
-        s = 0.0
-        for field in ("architecture", "category", "topology", "sensor_type", "memory_type"):
-            bv = (base.get(field) or "").lower()
-            cv = (c.get(field) or "").lower()
-            if bv and cv and bv == cv:
-                s += 2.0
-        for field in ("flash_kb", "ram_kb", "gpio_pins", "max_speed_mhz", "output_current_a"):
-            bv = base.get(field)
-            cv = c.get(field)
-            if bv and cv:
-                s += min(bv, cv) / max(bv, cv)
-        return s
+def _merge_candidates(structured: list[dict], vector: list[dict]) -> list[dict]:
+    merged: dict[str, dict] = {}
 
-    return sorted(candidates, key=score, reverse=True)[:top_n]
+    for candidate in structured + vector:
+        key = str(candidate.get("id") or candidate.get("part_number") or candidate.get("product_name"))
+        if key not in merged:
+            merged[key] = dict(candidate)
+        else:
+            merged[key].update({k: v for k, v in candidate.items() if v is not None})
+
+    return list(merged.values())
+
+
+def _resolve_search_mode(structured: list[dict], vector: list[dict]) -> str:
+    if structured and vector:
+        return "oracle_plus_vector"
+    if vector:
+        return "vector_only"
+    if structured:
+        return "structured_only"
+    return "none"
 
 
 def _clean(product: dict) -> dict:
-    """Remove binary/large fields not suitable for JSON serialization."""
     cleaned = {k: v for k, v in product.items() if k != "embedding_vector"}
     for key in ("created_at", "updated_at"):
         if cleaned.get(key) and hasattr(cleaned[key], "isoformat"):

@@ -385,6 +385,27 @@ def get_structured_candidates(base_product: dict, top_n: int = 50) -> list[dict]
     #         params["temp_range_min"] = parsed_temp - 15
     #         params["temp_range_max"] = parsed_temp + 15
 
+    if base_product.get("temp_range") is not None:
+        raw_temp = base_product.get("temp_range")
+        parsed_temp = parse_temp_to_float(raw_temp)
+        
+        if parsed_temp is not None:
+            conditions.append(
+                "("
+                "TEMP_RANGE IS NULL OR "
+                "TO_NUMBER(NULLIF("
+                "  REGEXP_SUBSTR("
+                "    REPLACE(REPLACE(REPLACE(UPPER(TEMP_RANGE), '°', ''), 'C', ''), ' ', ''),"  # remove °, C, and spaces
+                "    '[-+]?[0-9]+'"
+                "  ),"
+                "  ''"
+                ")) BETWEEN :temp_range_min AND :temp_range_max"
+                ")"
+            )
+            params['temp_range_min'] = parsed_temp - 15
+            params['temp_range_max'] = parsed_temp + 15    
+
+
     query = f"SELECT * FROM products WHERE {' AND '.join(conditions)} FETCH FIRST :top_n ROWS ONLY"
     conn = get_connection()
     try:
@@ -442,29 +463,15 @@ def _default_product_fields() -> dict:
 
 import re
 
-def parse_temp_to_float(temp_str):
+def parse_temp_to_float(raw_temp):
     """
-    Extracts first signed number from a temperature string.
-    Examples:
-        "- 65 C"      -> -65.0
-        "-40°C to 125°C" -> -40.0
-        "125 C"       -> 125.0
-    Returns None if no number is found.
+    Convert the base product temp_range to float.
+    Expects raw_temp to be numeric (e.g. 25, -40, 85.0).
+    Returns float or None.
     """
-    if temp_str is None:
+    if raw_temp is None:
         return None
-
-    s = temp_str.strip()
-    # Normalize: remove degree symbol, C/c, and extra spaces
-    s = s.replace("°", "").replace("C", "").replace("c", "")
-    s = re.sub(r"\s+", " ", s)
-
-    # Get first signed/unsigned number
-    m = re.search(r"[-+]?\d+(\.\d+)?", s)
-    if not m:
-        return None
-
     try:
-        return float(m.group(0))
-    except ValueError:
+        return float(raw_temp)
+    except (TypeError, ValueError):
         return None

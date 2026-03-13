@@ -368,6 +368,19 @@ def get_structured_candidates(base_product: dict, top_n: int = 50) -> list[dict]
     if base_product.get("sensor_type"):
         conditions.append("(sensor_type IS NULL OR LOWER(sensor_type) = LOWER(:sensor_type))")
         params["sensor_type"] = base_product["sensor_type"]
+    # if base_product.get("temp_range") is not None:
+    # # temp_range here is expected to be a numeric value in Python
+    #     raw_temp = base_product.get("temp_range")
+    #     parsed_temp = parse_temp_to_float(raw_temp)
+
+    #     if parsed_temp is not None:
+    #         conditions.append(
+    #             "(TEMP_RANGE IS NULL OR "
+    #             "TO_NUMBER(REGEXP_SUBSTR(REPLACE(REPLACE(REPLACE(TEMP_RANGE, '°', ''), 'C', ''), 'c', ''), '[-+]?[0-9]+')) "
+    #             "BETWEEN :temp_range_min AND :temp_range_max)"
+    #         )
+    #         params["temp_range_min"] = parsed_temp - 15
+    #         params["temp_range_max"] = parsed_temp + 15
 
     query = f"SELECT * FROM products WHERE {' AND '.join(conditions)} FETCH FIRST :top_n ROWS ONLY"
     conn = get_connection()
@@ -422,3 +435,33 @@ def _default_product_fields() -> dict:
         "gate_charge_nc": None,
         "features_text": None,
     }
+
+
+import re
+
+def parse_temp_to_float(temp_str):
+    """
+    Extracts first signed number from a temperature string.
+    Examples:
+        "- 65 C"      -> -65.0
+        "-40°C to 125°C" -> -40.0
+        "125 C"       -> 125.0
+    Returns None if no number is found.
+    """
+    if temp_str is None:
+        return None
+
+    s = temp_str.strip()
+    # Normalize: remove degree symbol, C/c, and extra spaces
+    s = s.replace("°", "").replace("C", "").replace("c", "")
+    s = re.sub(r"\s+", " ", s)
+
+    # Get first signed/unsigned number
+    m = re.search(r"[-+]?\d+(\.\d+)?", s)
+    if not m:
+        return None
+
+    try:
+        return float(m.group(0))
+    except ValueError:
+        return None

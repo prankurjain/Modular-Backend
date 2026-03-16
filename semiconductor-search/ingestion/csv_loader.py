@@ -6,6 +6,7 @@ Supported columns (flexible):
   - category (optional, defaults to "transistor")
   - html_path / html_file / source
   - url / product_url
+  - datasheet_link / datasheet_url / datasheet_path
 
 If a local html path is not provided, URL can be used as the HTML source.
 """
@@ -22,7 +23,8 @@ def load_product_csv(csv_path: str) -> list[dict]:
 
     Expected columns:
       required: product_name
-      optional: category, html_path (or html_file/source), url (or product_url)
+      optional: category, html_path (or html_file/source), url (or product_url),
+                datasheet_link (or datasheet_url/datasheet_path)
 
     Returns:
         List of dicts with keys: product_name, category, html_path
@@ -44,6 +46,11 @@ def load_product_csv(csv_path: str) -> list[dict]:
                 or row.get("source", "").strip()
             )
             source_url = row.get("url", "").strip() or row.get("product_url", "").strip()
+            datasheet_link = (
+                row.get("datasheet_link", "").strip()
+                or row.get("datasheet_url", "").strip()
+                or row.get("datasheet_path", "").strip()
+            )
 
             if not name:
                 print(f"  [CSV] Row {i}: skipping row with empty product_name")
@@ -64,6 +71,7 @@ def load_product_csv(csv_path: str) -> list[dict]:
                 "category": category,
                 "html_path": html_path,
                 "source_url": source_url,
+                "datasheet_link": datasheet_link,
             })
 
     print(f"[CSV] Loaded {len(products)} products from {csv_path}")

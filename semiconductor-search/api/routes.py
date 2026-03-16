@@ -14,6 +14,7 @@ from ingestion.html_loader import load_html
 from ingestion.html_parser import parse_product_specs
 from ingestion.category_detector import detect_category
 from ingestion.spec_normalizer import normalize_specs
+from ingestion.datasheet_loader import read_datasheet_text
 from database.db_client import (
     upsert_product,
     get_products_without_embeddings,
@@ -24,6 +25,7 @@ from database.db_client import (
     get_products_with_embeddings,
 )
 from search.hybrid_search import find_alternatives
+from llm.product_intelligence import extract_datasheet_attributes, generate_alternative_pros_cons
 from vector_db.service import upsert_product_vector
 from embeddings.embedding_service import get_embedding
 
@@ -91,6 +93,22 @@ def _valid_attributes_for_product(product: dict | None) -> dict:
     }
 
 
+def _enrich_alternatives_with_llm(base_product: dict | None, alternatives: list[dict]) -> list[dict]:
+    if not base_product:
+        return alternatives
+
+    enriched: list[dict] = []
+    for candidate in alternatives:
+        analysis = generate_alternative_pros_cons(base_product, candidate)
+        merged = dict(candidate)
+        merged["pros"] = analysis.get("pros", [])
+        merged["cons"] = analysis.get("cons", [])
+        merged["selection_summary"] = analysis.get("summary", "")
+        merged["matrix_attributes"] = analysis.get("matrix_attributes", {})
+        enriched.append(merged)
+    return enriched
+
+
 def _parse_bom_part_numbers(csv_bytes: bytes) -> list[str]:
     try:
         decoded = csv_bytes.decode("utf-8-sig")
@@ -138,6 +156,7 @@ def ingest_data(csv_path: str = Query(default=CSV_PATH)):
         name = entry["product_name"]
         category = entry["category"]
         html_source = entry.get("html_path", "") or entry.get("source_url", "")
+        datasheet_source = entry.get("datasheet_link", "")
 
         try:
             html = load_html(html_source, csv_dir=str(Path(csv_path).resolve().parent))
@@ -146,6 +165,22 @@ def ingest_data(csv_path: str = Query(default=CSV_PATH)):
                 raw_specs = parse_product_specs(html, None)
             resolved_category = detect_category(raw_specs, hint=category)
             product = normalize_specs(name, resolved_category, raw_specs)
+
+            if datasheet_source:
+                datasheet_text = read_datasheet_text(
+                    datasheet_source,
+                    csv_dir=str(Path(csv_path).resolve().parent),
+                )
+                datasheet_attributes = extract_datasheet_attributes(
+                    part_number=product.get("part_number") or name,
+                    category=resolved_category,
+                    datasheet_text=datasheet_text,
+                )
+                if datasheet_attributes:
+                    base_features = product.get("features_text") or ""
+                    extra_features = " | ".join(datasheet_attributes)
+                    product["features_text"] = f"{base_features} | Datasheet insights: {extra_features}".strip(" |")
+
             upsert_product(product)
             ingested += 1
         except Exception as e:
@@ -273,6 +308,11 @@ def find_alternatives_endpoint(payload: FindAlternativeRequest):
     result = find_alternatives(payload.part_number, top_n=payload.top_k)
     if result.get("error"):
         raise HTTPException(status_code=404, detail=result["error"])
+
+    result["alternatives"] = _enrich_alternatives_with_llm(
+        result.get("base_product"),
+        result.get("alternatives", []),
+    )
     return result
 
 
@@ -306,7 +346,10 @@ async def find_alternatives_bom(file: UploadFile = File(...), top_k: int = Query
             continue
 
         base_product = result.get("base_product")
-        alternatives = result.get("alternatives", [])
+        alternatives = _enrich_alternatives_with_llm(
+            base_product,
+            result.get("alternatives", []),
+        )
         results.append(
             BomAlternativeItem(
                 input_part_number=part_number,
@@ -341,6 +384,10 @@ def find_alternatives_legacy(
     result = find_alternatives(product_name, top_n=top_n)
     if result.get("error"):
         raise HTTPException(status_code=404, detail=result["error"])
+    result["alternatives"] = _enrich_alternatives_with_llm(
+        result.get("base_product"),
+        result.get("alternatives", []),
+    )
     return result
 
 

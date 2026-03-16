@@ -150,38 +150,6 @@ def _request(method: str, path: str, **kwargs) -> tuple[bool, Any]:
         return False, {"detail": str(exc)}
 
 
-def _pros_cons(base: dict, candidate: dict) -> tuple[list[str], list[str]]:
-    pros: list[str] = []
-    cons: list[str] = []
-
-    checks = [
-        ("vds_max_v", "Higher/Equal Vds", lambda b, c: c >= b),
-        ("id_max_a", "Higher/Equal Id", lambda b, c: c >= b),
-        ("rds_on_ohm", "Lower/Equal Rds(on)", lambda b, c: c <= b),
-        ("gate_charge_nc", "Lower/Equal Gate Charge", lambda b, c: c <= b),
-    ]
-
-    for field, label, fn in checks:
-        b = base.get(field)
-        c = candidate.get(field)
-        if b is None or c is None:
-            continue
-        if fn(b, c):
-            pros.append(f"{label}: base={b}, candidate={c}")
-        else:
-            cons.append(f"{label} not met: base={b}, candidate={c}")
-
-    if candidate.get("package_type") and base.get("package_type"):
-        if str(candidate["package_type"]).lower() == str(base["package_type"]).lower():
-            pros.append(f"Package match: {candidate['package_type']}")
-        else:
-            cons.append(f"Package differs: base={base['package_type']}, candidate={candidate['package_type']}")
-
-    return pros, cons
-
-
-
-
 def _render_valid_attributes(attrs: dict, title: str):
     st.markdown(f"**{title}**")
     if not attrs:
@@ -189,6 +157,16 @@ def _render_valid_attributes(attrs: dict, title: str):
         return
     rows = [{"attribute": key, "value": value} for key, value in attrs.items()]
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_matrix_attributes(attrs: dict):
+    st.markdown("**📊 Matrix Attributes**")
+    if not attrs:
+        st.caption("No matrix attribute explanation returned.")
+        return
+    rows = [{"attribute": k, "comparison": v} for k, v in attrs.items()]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
 
 def _render_alt_card(position: int, candidate: dict, pros: list[str], cons: list[str]):
     score = candidate.get("rule_score", candidate.get("similarity_score", "NA"))
@@ -278,8 +256,13 @@ with tab_find:
                 st.info("No alternatives found.")
 
             for idx, candidate in enumerate(alternatives, start=1):
-                pros, cons = _pros_cons(base, candidate)
+                pros = candidate.get("pros", [])
+                cons = candidate.get("cons", [])
                 _render_alt_card(idx, candidate, pros, cons)
+                summary = candidate.get("selection_summary")
+                if summary:
+                    st.info(f"LLM summary: {summary}")
+                _render_matrix_attributes(candidate.get("matrix_attributes", {}))
                 with st.expander("View raw product data"):
                     st.json(candidate)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -329,6 +312,19 @@ with tab_bom:
                         rank = alt.get("rank", "-")
                         st.markdown(f"#### Alternative #{rank}: {alt.get('part_number') or alt.get('product_name', 'Unknown')}")
                         _render_valid_attributes(alt.get("valid_attributes", {}), "Alternative valid attributes")
+                        if alt.get("selection_summary"):
+                            st.info(f"LLM summary: {alt.get('selection_summary')}")
+                        _render_matrix_attributes(alt.get("matrix_attributes", {}))
+
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.markdown("**✅ Pros**")
+                            for item in alt.get("pros", []):
+                                st.markdown(f"- {item}")
+                        with c2:
+                            st.markdown("**⚠️ Cons**")
+                            for item in alt.get("cons", []):
+                                st.markdown(f"- {item}")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab_products:

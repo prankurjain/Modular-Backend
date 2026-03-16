@@ -1,35 +1,98 @@
-"""LLM helpers for datasheet extraction and alternative analysis."""
+"""Chat helpers for datasheet extraction and alternative analysis via ST chat API."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import random
+import time
 from typing import Any
 
-from openai import OpenAI
+import requests
+import urllib3
 
-from config.settings import OPENAI_API_KEY
+from config.settings import (
+    API_KEY,
+    CHAT_MAX_RESPONSE_TOKENS,
+    CHAT_PERSONA,
+    CHAT_SERVICE_NAME,
+    CHAT_TEMPERATURE,
+    CHAT_URL,
+    CLIENT_APP_NAME,
+    REMOTE_USER,
+)
 
-LLM_MODEL = "gpt-4o-mini"
-
-_client: OpenAI | None = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-def _json_response(messages: list[dict[str, str]]) -> dict[str, Any]:
-    if not _client:
+def _generate_token(api_key: str, client_app_name: str, service_name: str) -> tuple[str, int, int]:
+    timestamp = int(time.time() * 1000)
+    nonce = random.randint(0, 1_000_000)
+    data = f"{client_app_name}_{service_name}_{api_key}_{timestamp}_{nonce}"
+    token = hashlib.sha1(data.encode()).hexdigest()
+    return token, timestamp, nonce
+
+
+def _chat_json_response(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    if not API_KEY or not CLIENT_APP_NAME:
         return {}
+
+    token, timestamp, nonce = _generate_token(API_KEY, CLIENT_APP_NAME, CHAT_SERVICE_NAME)
+
+    request_body = {
+        "version": 1,
+        "clientAppName": CLIENT_APP_NAME,
+        "timestamp": timestamp,
+        "remoteUser": REMOTE_USER,
+        "service": CHAT_SERVICE_NAME,
+        "temperature": CHAT_TEMPERATURE,
+        "maxResponseTokens": CHAT_MAX_RESPONSE_TOKENS,
+        "responseFormat": "json_object",
+        "persona": CHAT_PERSONA,
+        "messages": messages,
+    }
 
     try:
-        response = _client.chat.completions.create(
-            model=LLM_MODEL,
-            temperature=0.2,
-            messages=messages,
-            response_format={"type": "json_object"},
+        response = requests.post(
+            CHAT_URL,
+            json=request_body,
+            headers={
+                "stchatgpt-auth-token": token,
+                "stchatgpt-auth-nonce": str(nonce),
+                "Content-Type": "application/json",
+            },
+            verify=False,
+            timeout=40,
         )
-        content = response.choices[0].message.content or "{}"
-        return json.loads(content)
-    except Exception as exc:
-        print(f"[LLM] request failed: {exc}")
+        response.raise_for_status()
+        payload = response.json()
+
+        # Accept common envelope shapes from chat APIs
+        if isinstance(payload, dict) and isinstance(payload.get("content"), dict):
+            return payload["content"]
+        if isinstance(payload, dict) and isinstance(payload.get("response"), dict):
+            return payload["response"]
+        if isinstance(payload, dict) and isinstance(payload.get("output"), dict):
+            return payload["output"]
+
+        if isinstance(payload, dict):
+            return payload
         return {}
+    except Exception as exc:
+        print(f"[LLM] chat request failed: {exc}")
+        return {}
+
+
+def _text_message(role: str, text: str) -> dict[str, Any]:
+    return {
+        "role": role,
+        "content": [
+            {
+                "type": "text",
+                "content": text,
+            }
+        ],
+    }
 
 
 def extract_datasheet_attributes(part_number: str, category: str, datasheet_text: str) -> list[str]:
@@ -38,29 +101,23 @@ def extract_datasheet_attributes(part_number: str, category: str, datasheet_text
         return []
 
     text_excerpt = datasheet_text[:12000]
-    payload = _json_response(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "You are a senior electronics engineer with 20+ years of experience in "
-                    "semiconductors, ICs, and sensors. Extract the most important product "
-                    "attributes useful for component comparison and sourcing."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Return strict JSON with key 'attributes' as an array of short bullet strings. "
-                    f"Part number: {part_number}. Category hint: {category}. "
-                    "Focus on key electrical and package properties such as voltage/current limits, "
-                    "frequency, power, thermal range, accuracy, interface, package, reliability, and "
-                    "what makes the part important. Keep max 12 bullets. Datasheet text:\n"
-                    f"{text_excerpt}"
-                ),
-            },
-        ]
+
+    system_text = (
+        "You are a senior electronics engineer with 20+ years of experience in semiconductors, "
+        "ICs, and sensors."
     )
+    user_text = (
+        "Return strict JSON only with key 'attributes' (array of short technical bullets). "
+        f"Part number: {part_number}. Category hint: {category}. "
+        "Focus on key electrical/package/thermal/performance limits and why the part is important for design. "
+        "Max 12 bullets. Datasheet text:\n"
+        f"{text_excerpt}"
+    )
+
+    payload = _chat_json_response([
+        _text_message("system", system_text),
+        _text_message("user", user_text),
+    ])
 
     attributes = payload.get("attributes", []) if isinstance(payload, dict) else []
     if not isinstance(attributes, list):
@@ -72,27 +129,19 @@ def extract_datasheet_attributes(part_number: str, category: str, datasheet_text
 
 def generate_alternative_pros_cons(base_product: dict, candidate_product: dict) -> dict[str, Any]:
     """Generate pros/cons and matrix highlights for a candidate alternative."""
-    payload = _json_response(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "You are a principal component selection engineer. Compare a base semiconductor "
-                    "product and an alternative candidate."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Return strict JSON with keys: 'pros' (array), 'cons' (array), "
-                    "'summary' (string), and 'matrix_attributes' (object mapping attribute->comparison text). "
-                    "Keep each item short and technical.\n"
-                    f"Base product: {json.dumps(base_product, default=str)}\n"
-                    f"Candidate product: {json.dumps(candidate_product, default=str)}"
-                ),
-            },
-        ]
+
+    user_text = (
+        "Compare base and candidate semiconductor products for engineering substitution. "
+        "Return strict JSON with keys: 'pros' (array), 'cons' (array), 'summary' (string), "
+        "'matrix_attributes' (object mapping attribute->comparison note). Keep concise and technical.\n"
+        f"Base product: {json.dumps(base_product, default=str)}\n"
+        f"Candidate product: {json.dumps(candidate_product, default=str)}"
     )
+
+    payload = _chat_json_response([
+        _text_message("system", "You are a principal component selection engineer."),
+        _text_message("user", user_text),
+    ])
 
     if not isinstance(payload, dict):
         return {"pros": [], "cons": [], "summary": "", "matrix_attributes": {}}

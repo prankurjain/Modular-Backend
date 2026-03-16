@@ -138,11 +138,13 @@ with st.sidebar:
     api_base = st.text_input("API Base URL", value=DEFAULT_API_BASE)
     st.caption("Set this to your FastAPI service endpoint.")
 
+DEFAULT_TIMEOUT_SECONDS = 180  # 3 minutes
 
 def _request(method: str, path: str, **kwargs) -> tuple[bool, Any]:
     url = f"{api_base.rstrip('/')}{path}"
     try:
-        resp = requests.request(method, url, timeout=60, **kwargs)
+        timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT_SECONDS)
+        resp = requests.request(method, url, timeout=timeout, **kwargs)
         if resp.status_code >= 400:
             return False, {"status": resp.status_code, "detail": resp.text}
         return True, resp.json()

@@ -26,7 +26,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def _generate_token(api_key: str, client_app_name: str, service_name: str) -> tuple[str, int, int]:
-    timestamp = int(time.time() * 1000)
+    timestamp = int(time.time())
+    # timestamp = int(time.time() * 1000)
     nonce = random.randint(0, 1_000_000)
     data = f"{client_app_name}_{service_name}_{api_key}_{timestamp}_{nonce}"
     token = hashlib.sha1(data.encode()).hexdigest()
@@ -38,7 +39,7 @@ def _chat_json_response(messages: list[dict[str, Any]]) -> dict[str, Any]:
         return {}
 
     token, timestamp, nonce = _generate_token(API_KEY, CLIENT_APP_NAME, CHAT_SERVICE_NAME)
-
+    print("timestamp:", timestamp)
     request_body = {
         "version": 1,
         "clientAppName": CLIENT_APP_NAME,
@@ -66,6 +67,24 @@ def _chat_json_response(messages: list[dict[str, Any]]) -> dict[str, Any]:
         )
         response.raise_for_status()
         payload = response.json()
+
+        if isinstance(payload, dict) and "completion" in payload:
+            completion = payload["completion"]
+
+            # If it's a JSON string, parse it
+            if isinstance(completion, str):
+                try:
+                    parsed = json.loads(completion)
+                    # This 'parsed' dict will have "attributes" at top level
+                    return parsed
+                except json.JSONDecodeError as e:
+                    print("Failed to parse completion JSON:", e)
+                    # Fallback: return it wrapped so caller still gets something
+                    return {"completion": completion}
+
+            # If it's already a dict (rare, but future-proof), return it
+            if isinstance(completion, dict):
+                return completion
 
         # Accept common envelope shapes from chat APIs
         if isinstance(payload, dict) and isinstance(payload.get("content"), dict):
